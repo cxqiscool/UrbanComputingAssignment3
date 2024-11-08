@@ -3,14 +3,24 @@ package tcd.assignment3.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.format.DateTimeFormatter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import tcd.assignment3.entity.HourlyAverage;
 import tcd.assignment3.entity.Monitor;
+import tcd.assignment3.repository.HourlyAverageRepository;
 import tcd.assignment3.repository.MonitorRepository;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class SonitusApiService {
@@ -25,12 +35,24 @@ public class SonitusApiService {
     @Autowired
     private MonitorRepository monitorRepository;
 
-    @Scheduled(fixedRate = 3600000) // 每小时运行一次
-    public void fetchAndStoreAllMonitorData() throws JsonProcessingException {
+    @Autowired
+    private HourlyAverageRepository hourlyAverageRepository;
+
+    @Scheduled(fixedRate = 300000) // 每五分钟运行一次
+    public void fetchAndStoreHourlyAverages() throws JsonProcessingException {
+        List<String> serialNumbers = fetchMonitorSerialNumbers();
+
+        if (serialNumbers != null) {
+            for (String serialNumber : serialNumbers) {
+                fetchAndStoreHourlyAveragesForMonitor(serialNumber);
+            }
+        }
+    }
+
+    private List<String> fetchMonitorSerialNumbers() {
         String monitorsUrl = BASE_URL + "/api/monitors?username=" + USERNAME + "&password=" + PASSWORD;
 
         try {
-            // 获取所有监测器的列表
             ResponseEntity<String> response = restTemplate.postForEntity(monitorsUrl, null, String.class);
             String responseBody = response.getBody();
             System.out.println("Monitors API 响应: " + responseBody);
@@ -38,33 +60,48 @@ public class SonitusApiService {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode monitorsArray = mapper.readTree(responseBody);
 
-            // 遍历每个监测器，获取详细信息并保存
+            List<String> serialNumbers = new ArrayList<>();
             for (JsonNode monitorNode : monitorsArray) {
-                String serialNumber = monitorNode.get("serial_number").asText();
-                fetchAndStoreMonitorDetails(serialNumber);
+                serialNumbers.add(monitorNode.get("serial_number").asText());
             }
+            return serialNumbers;
 
-        } catch (RestClientException e) {
+        } catch (RestClientException | JsonProcessingException e) {
             System.err.println("获取监测器列表时出错: " + e.getMessage());
+            return null;
         }
     }
 
-    private void fetchAndStoreMonitorDetails(String serialNumber) throws JsonProcessingException {
-        String monitorUrl = BASE_URL + "/api/monitor/" + serialNumber + "?username=" + USERNAME + "&password=" + PASSWORD;
+
+    private void fetchAndStoreHourlyAveragesForMonitor(String serialNumber) {
+        long endTimestamp = Instant.now().getEpochSecond();
+        long startTimestamp = Instant.now().minus(5, ChronoUnit.MINUTES).getEpochSecond();
+        String hourlyAveragesUrl = BASE_URL + "/api/hourly-averages?username=" + USERNAME + "&password=" + PASSWORD
+                + "&monitor=" + serialNumber + "&start=" + startTimestamp + "&end=" + endTimestamp;
 
         try {
-            // 构造 POST 请求以获取单个监测器的详细信息
-            ResponseEntity<String> response = restTemplate.postForEntity(monitorUrl, null, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(hourlyAveragesUrl, null, String.class);
             String responseBody = response.getBody();
-            System.out.println("Monitor " + serialNumber + " API 响应: " + responseBody);
+            System.out.println("Hourly Averages for Monitor " + serialNumber + " API 响应: " + responseBody);
 
-            // 将响应转换为 Monitor 实体并保存
             ObjectMapper mapper = new ObjectMapper();
-            Monitor monitor = mapper.readValue(responseBody, Monitor.class);
-            monitorRepository.save(monitor);
+            JsonNode hourlyAveragesArray = mapper.readTree(responseBody);
 
-        } catch (RestClientException e) {
-            System.err.println("获取监测器 " + serialNumber + " 详细信息时出错: " + e.getMessage());
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+            for (JsonNode dataPoint : hourlyAveragesArray) {
+                HourlyAverage hourlyAverage = new HourlyAverage();
+                hourlyAverage.setSerialNumber(serialNumber);
+                hourlyAverage.setDatetime(LocalDateTime.parse(dataPoint.get("datetime").asText(), formatter));
+                hourlyAverage.setLaeq(dataPoint.get("laeq").asDouble());
+
+                // 保存到数据库
+                hourlyAverageRepository.save(hourlyAverage);
+            }
+
+        } catch (RestClientException | JsonProcessingException e) {
+            System.err.println("获取监测器 " + serialNumber + " 的小时平均数据时出错: " + e.getMessage());
         }
     }
+
 }
