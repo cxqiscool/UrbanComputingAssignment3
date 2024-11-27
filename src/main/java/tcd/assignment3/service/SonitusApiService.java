@@ -100,7 +100,7 @@ public class SonitusApiService {
             }
 
         } catch (RestClientException | JsonProcessingException e) {
-            System.err.println("获取监测器 " + serialNumber + " 的小时平均数据时出错: " + e.getMessage());
+            System.err.println("获取监 测器 " + serialNumber + " 的小时平均数据时出错: " + e.getMessage());
         }
     }
 
