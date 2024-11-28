@@ -38,10 +38,10 @@ public class SonitusApiService {
     @Autowired
     private HourlyAverageRepository hourlyAverageRepository;
 
-    @Scheduled(fixedRate = 300000) // 每五分钟运行一次
+    @Scheduled(fixedRate = 300000)
     public void fetchAndStoreHourlyAverages() throws JsonProcessingException {
         List<String> serialNumbers = fetchMonitorSerialNumbers();
-
+        System.out.println(serialNumbers);
         if (serialNumbers != null) {
             for (String serialNumber : serialNumbers) {
                 fetchAndStoreHourlyAveragesForMonitor(serialNumber);
@@ -55,7 +55,7 @@ public class SonitusApiService {
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(monitorsUrl, null, String.class);
             String responseBody = response.getBody();
-            System.out.println("Monitors API 响应: " + responseBody);
+            System.out.println("Monitors API response: " + responseBody);
 
             ObjectMapper mapper = new ObjectMapper();
             JsonNode monitorsArray = mapper.readTree(responseBody);
@@ -67,7 +67,7 @@ public class SonitusApiService {
             return serialNumbers;
 
         } catch (RestClientException | JsonProcessingException e) {
-            System.err.println("获取监测器列表时出错: " + e.getMessage());
+            System.err.println("error: " + e.getMessage());
             return null;
         }
     }
@@ -82,7 +82,7 @@ public class SonitusApiService {
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(hourlyAveragesUrl, null, String.class);
             String responseBody = response.getBody();
-            System.out.println("Hourly Averages for Monitor " + serialNumber + " API 响应: " + responseBody);
+            System.out.println("Hourly Averages for Monitor " + serialNumber + " API response: " + responseBody);
 
             ObjectMapper mapper = new ObjectMapper();
             JsonNode hourlyAveragesArray = mapper.readTree(responseBody);
@@ -100,7 +100,7 @@ public class SonitusApiService {
             }
 
         } catch (RestClientException | JsonProcessingException e) {
-            System.err.println("获取监 测器 " + serialNumber + " 的小时平均数据时出错: " + e.getMessage());
+            System.err.println("get monitor " + serialNumber + " error: " + e.getMessage());
         }
     }
 
